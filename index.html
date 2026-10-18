@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TURBO STWORY – otwieranie paczek</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="world">
+  <div id="shaker">
+    <div id="table"></div>
+    <div class="crt"><div class="crt-screen"></div></div>
+    <div id="props"></div>
+    <div id="light"></div>
+    <div id="wrappers"></div>
+    <div id="stage">
+      <div id="packwrap"></div>
+      <div id="stack"></div>
+      <div id="tag"></div>
+      <div id="receipt"></div>
+    </div>
+  </div>
+  <div id="hud">
+    <div class="hud-brand"><b>LICZNIK</b><span>KASA FISKALNA 2000</span></div>
+    <div class="vfd">
+      <div class="cell"><label>PORTFEL</label><span id="h-wallet">0,00 zł</span></div>
+      <div class="cell"><label>WYDANO</label><span id="h-spent">0,00 zł</span></div>
+      <div class="cell"><label>WARTOŚĆ KART</label><span id="h-pulled">0,00 zł</span></div>
+      <div class="cell"><label>BILANS</label><span id="h-profit">0,00 zł</span></div>
+      <div class="cell sm"><label>PACZKI</label><span id="h-packs">0</span></div>
+      <div class="cell wide"><label>NAJLEPSZY STRZAŁ</label><span id="h-best">—</span></div>
+    </div>
+  </div>
+  <div id="hint"></div>
+  <div id="controls">
+    <button class="btn buy" id="b-buy">KUP PACZKĘ</button>
+    <button class="btn alt" id="b-album">ALBUM</button>
+    <button class="btn alt hidden" id="b-pocket">KIESZONKOWE +50 zł</button>
+    <button class="btn mini" id="b-sound">DŹWIĘK: WŁ</button>
+    <button class="btn mini" id="b-reset">NOWA SESJA</button>
+  </div>
+  <div id="album" class="overlay hidden"></div>
+  <div id="detail" class="overlay hidden"></div>
+  <div id="pop"></div>
+  <div id="flash"></div>
+  <canvas id="fx" width="1280" height="800"></canvas>
+  <div id="toast"></div>
+</div>
+<script src="js/data.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/art.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

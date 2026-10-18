@@ -1,0 +1,62 @@
+/* Dźwięki syntezowane WebAudio – bez plików. */
+(function (root) {
+  'use strict';
+  var ctx = null, master = null, noiseBuf = null, enabled = true, lastCrinkle = 0;
+  function init() {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return ctx; }
+    var AC = root.AudioContext || root.webkitAudioContext; if (!AC) return null;
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+    var d = noiseBuf.getChannelData(0); for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return ctx;
+  }
+  function ok() { return enabled && init(); }
+  function env(g, t, a, peak, dur) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); }
+  function noise(t, dur, type, freq, q, peak, sweepTo) {
+    var s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    var f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t + dur); f.Q.value = q;
+    var g = ctx.createGain(); env(g, t, 0.005, peak, dur);
+    s.connect(f); f.connect(g); g.connect(master); s.start(t, Math.random()); s.stop(t + dur + 0.05);
+  }
+  function tone(t, freq, dur, type, peak, slideTo) {
+    var o = ctx.createOscillator(); o.type = type || 'square'; o.frequency.setValueAtTime(freq, t); if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    var g = ctx.createGain(); env(g, t, 0.01, peak || 0.15, dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  var A = {
+    setEnabled: function (on) { enabled = !!on; },
+    get enabled() { return enabled; },
+    unlock: function () { if (enabled) init(); },
+    crinkle: function (amt) { // szelest folii przy przeciąganiu
+      if (!ok()) return; var now = ctx.currentTime; if (now - lastCrinkle < 0.035) return; lastCrinkle = now;
+      var n = 1 + ((Math.random() * 3) | 0);
+      for (var i = 0; i < n; i++) noise(now + i * 0.012, 0.03 + Math.random() * 0.05, 'bandpass', 2500 + Math.random() * 5000, 3, 0.25 + 0.4 * Math.min(1, amt || 0.5));
+    },
+    rip: function () { if (!ok()) return; var t = ctx.currentTime; noise(t, 0.35, 'bandpass', 5000, 1.2, 0.8, 1200); noise(t + 0.05, 0.25, 'highpass', 3000, 0.7, 0.4); for (var i = 0; i < 6; i++) A.crinkle(1); },
+    whoosh: function () { if (!ok()) return; noise(ctx.currentTime, 0.28, 'bandpass', 600, 1, 0.35, 2600); },
+    flip: function () { if (!ok()) return; var t = ctx.currentTime; noise(t, 0.06, 'highpass', 2000, 1, 0.5); tone(t, 320, 0.05, 'triangle', 0.08, 180); },
+    reveal: function (rank) {
+      if (!ok()) return; var t = ctx.currentTime;
+      if (rank <= 0) tone(t, 440, 0.08, 'square', 0.05);
+      else if (rank === 1) { tone(t, 523, 0.08, 'square', 0.06); tone(t + 0.07, 659, 0.1, 'square', 0.06); }
+      else if (rank === 2) [659, 784, 988].forEach(function (f, i) { tone(t + i * 0.07, f, 0.14, 'square', 0.07); });
+      else if (rank === 3) { [784, 988, 1175, 1568].forEach(function (f, i) { tone(t + i * 0.06, f, 0.35, 'triangle', 0.12); }); A.sparkle(); }
+      else if (rank === 4) { [523, 659, 784, 1047, 1319].forEach(function (f, i) { tone(t + i * 0.08, f, 0.5, 'square', 0.08); tone(t + i * 0.08, f * 2, 0.4, 'triangle', 0.05); }); A.sparkle(); }
+      else A.fanfare();
+    },
+    sparkle: function () { if (!ok()) return; var t = ctx.currentTime; for (var i = 0; i < 10; i++) tone(t + i * 0.045, 1800 + Math.random() * 2500, 0.12, 'sine', 0.05); },
+    riser: function (dur) { if (!ok()) return; var t = ctx.currentTime; tone(t, 110, dur, 'sawtooth', 0.06, 880); tone(t, 165, dur, 'square', 0.03, 1320); noise(t, dur, 'bandpass', 400, 2, 0.15, 6000); },
+    fanfare: function () {
+      if (!ok()) return; var t = ctx.currentTime; noise(t, 0.6, 'lowpass', 900, 0.5, 0.6, 150); tone(t, 55, 0.6, 'sine', 0.4, 35);
+      var seq = [[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36], [784, 0.52], [1047, 0.64]];
+      seq.forEach(function (n) { tone(t + n[1], n[0], 0.22, 'square', 0.09); tone(t + n[1], n[0] / 2, 0.22, 'sawtooth', 0.05); });
+      [1047, 1319, 1568, 2093].forEach(function (f) { tone(t + 0.8, f, 1.4, 'triangle', 0.07); });
+      for (var i = 0; i < 24; i++) tone(t + 0.8 + i * 0.05, 2000 + Math.random() * 3000, 0.15, 'sine', 0.04);
+    },
+    coin: function () { if (!ok()) return; var t = ctx.currentTime; tone(t, 988, 0.08, 'square', 0.08); tone(t + 0.08, 1319, 0.25, 'square', 0.08); },
+    register: function () { if (!ok()) return; var t = ctx.currentTime; noise(t, 0.08, 'bandpass', 3000, 4, 0.4); tone(t + 0.06, 2093, 0.5, 'triangle', 0.12); tone(t + 0.06, 2637, 0.4, 'sine', 0.06); },
+    click: function () { if (!ok()) return; tone(ctx.currentTime, 1200, 0.03, 'square', 0.04); },
+    page: function () { if (!ok()) return; noise(ctx.currentTime, 0.18, 'bandpass', 1500, 0.8, 0.3, 4000); },
+    error: function () { if (!ok()) return; var t = ctx.currentTime; tone(t, 200, 0.15, 'square', 0.08); tone(t + 0.15, 150, 0.2, 'square', 0.08); }
+  };
+  root.PZAudio = A;
+})(window);
