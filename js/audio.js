@@ -23,7 +23,7 @@
     var g = ctx.createGain(); env(g, t, 0.01, peak || 0.15, dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
   }
   var A = {
-    setEnabled: function (on) { enabled = !!on; if (!enabled) A.stopSfx(); },
+    setEnabled: function (on) { enabled = !!on; if (!enabled) { A.stopSfx(); if (A.music) A.music.stop(); } },
     get enabled() { return enabled; },
     unlock: function () { if (enabled) init(); },
     crinkle: function (amt) { // szelest folii przy przeciąganiu
@@ -83,5 +83,29 @@
     } catch (e) { synthSfx(name); }
   };
   A.stopSfx = function () { filePlaying.forEach(function (c) { try { c.pause(); } catch (e) {} }); filePlaying = []; };
+  /* muzyczka w menu i karierze: krótka pętla chiptune (WebAudio, bez plików) */
+  var mus = { vol: 0.4, on: false, t: null, step: 0, next: 0, g: null };
+  var BPM = 116, ST = 60 / BPM / 2;                  // ósemki
+  var CH = [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59]];   // Am F G Em
+  var LEAD = [76, 0, 74, 72, 0, 72, 74, 76, 77, 0, 76, 74, 72, 0, 69, 0, 71, 0, 72, 74, 0, 79, 77, 76, 74, 0, 72, 71, 72, 0, 0, 0];
+  function hz(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+  function mtone(t, f, d, type, v) { var o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(mus.g); o.start(t); o.stop(t + d + 0.02); }
+  function tick() {
+    if (!ctx || !mus.on) return;
+    while (mus.next < ctx.currentTime + 0.25) {
+      var i = mus.step % 32, ch = CH[(i / 8) | 0], t = mus.next;
+      if (i % 2 === 0) mtone(t, hz(ch[0] - 24), ST * 1.8, 'triangle', 0.22);
+      mtone(t, hz(ch[i % 3] + 12), ST * 0.5, 'square', 0.035);
+      if (LEAD[i] && mus.step % 64 >= 32) mtone(t, hz(LEAD[i]), ST * 0.9, 'square', 0.06);
+      if (i % 4 === 2) noise(t, 0.04, 'highpass', 7000, 1, 0.08);
+      mus.next += ST; mus.step++;
+    }
+  }
+  A.music = {
+    start: function () { if (!enabled || !init() || mus.on || mus.vol <= 0) return; mus.on = true; if (!mus.g) { mus.g = ctx.createGain(); mus.g.connect(master); } mus.g.gain.value = mus.vol; mus.next = ctx.currentTime + 0.05; mus.t = setInterval(tick, 90); tick(); },
+    stop: function () { mus.on = false; clearInterval(mus.t); },
+    setVolume: function (v) { mus.vol = Math.max(0, Math.min(1, v)); if (mus.g) mus.g.gain.value = mus.vol; if (mus.vol <= 0) A.music.stop(); },
+    get playing() { return mus.on; }
+  };
   root.PZAudio = A;
 })(window);

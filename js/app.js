@@ -11,7 +11,9 @@
   try { localStorage.setItem('_pz', '1'); localStorage.removeItem('_pz'); store = localStorage; } catch (e) { store = null; }
   // tryb demo nie rusza prawdziwego zapisu
   var CAT = PZCat;
-  var E = PZEconomy.createEconomy(D, demo ? null : store, 'paczki.v1', CAT);
+  var E = PZEconomy.createEconomy(D, demo ? null : store, 'paczki.v1', CAT), FREE_E = E;
+  // haki trybu gry: Gra swobodna = brak haków; Kariera podmienia ekonomię i podpina się pod sklep, karty, sprzedaż
+  var H = {};
   var demoSet = CAT.has(params.get('set')) ? params.get('set') : null;
   E.load(); if (demo && params.has('wallet')) E.state.wallet = +params.get('wallet') || E.state.wallet;
   S.setEnabled(E.state.sound);
@@ -53,7 +55,9 @@
     again.classList.toggle('hidden', !(free && st.packs > 0)); again.disabled = !E.canBuy(last.id); again.classList.toggle('pulse', free && E.canBuy(last.id));
     var tot = CAT.list.reduce(function (a, x) { return a + x.size; }, 0);
     $('b-album').textContent = 'ALBUM ' + E.uniqueCount() + '/' + tot;
-    $('b-pocket').classList.toggle('hidden', !(st.wallet < E.cheapest() && !st.pending));
+    $('b-pocket').classList.toggle('hidden', !!H.career || !(st.wallet < E.cheapest() && !st.pending));
+    $('b-reset').classList.toggle('hidden', !!H.career); buy.classList.toggle('hidden', !!H.career); if (H.career) again.classList.add('hidden'); $('b-home').classList.toggle('hidden', !(H.career && free));
+    if (H.hud) H.hud();
     $('b-sound').textContent = 'DŹWIĘK: ' + (st.sound ? 'WŁ' : 'WYŁ');
   }
   function hint(t, blink) { var h = $('hint'); h.textContent = t; h.classList.toggle('blink', !!blink); }
@@ -207,7 +211,7 @@
     ensureReveal();
     var res = E.revealNext(), dup = (E.state.collection[c.id] || 0) > 1;
     el.style.visibility = 'hidden';
-    var speed = REV_SPEED[c.tier] * (dup && rank < 5 ? 1.7 : 1);
+    var speed = REV_SPEED[c.tier] * (dup && rank < 5 ? 1.7 : 1) * (window.PZSettings ? PZSettings.get().speed : 1);
     if (rank >= 4) hint('Kliknij albo naciśnij Spację, żeby pominąć animację', false);
     TurboReveal.play({ id: c.id }, c.tier, {
       container: $('world'), from: 'back', packEl: revealBack(), speed: speed, waitForTap: rank >= 4, bannerGap: 6, seed: (Math.random() * 1e6) | 0,
@@ -240,6 +244,7 @@
   }
   function onRevealed(res, viaModule) {
     var c = res.card, rank = D.TIERS[c.tier].rank, p = E.state.pending;
+    if (H.onCard) H.onCard(c);
     if (!viaModule) S.reveal(rank); showTag(c); hud();
     var left = p.cards.length - p.revealed;
     if (viaModule) {   // pokaz już był w module – tu tylko cena (dla SR duża) i trochę iskier na stole
@@ -266,13 +271,15 @@
       return '<div class="ln' + (t.rank >= 5 ? ' sr' : t.rank >= 3 ? ' hit' : '') + '"><span>' + (c.set ? D.pad3(c.num) : c.id) + ' ' + A.esc(c.name) + ' (' + t.short + ')</span><span>' + money(c.price).replace(' zł', '') + '</span></div>';
     }).join('');
     var r = $('receipt');
-    r.innerHTML = '<h3>SKLEPIK „U ZDZISIA”</h3><div class="sub">PARAGON NIEFISKALNY · PACZKA nr ' + E.state.packs + '<br>' + setI.name + ' · ' + p.cards.length + ' kart</div>' + lines +
-      '<hr><div class="ln tot"><span>WARTOŚĆ KART</span><span>' + money(val) + '</span></div><div class="ln"><span>CENA PACZKI</span><span>' + money(p.price) + '</span></div>' +
+    r.innerHTML = '<h3>' + (H.receiptTitle || 'SKLEPIK „U ZDZISIA”') + '</h3><div class="sub">' + (H.receiptSub || 'PARAGON NIEFISKALNY') + ' · PACZKA nr ' + E.state.packs + '<br>' + setI.name + ' · ' + p.cards.length + ' kart</div>' + lines +
+      '<hr><div class="ln tot"><span>WARTOŚĆ KART</span><span>' + money(val) + '</span></div><div class="ln"><span>' + (H.costLabel || 'CENA PACZKI') + '</span><span>' + money(p.price) + '</span></div>' +
       '<div class="ln tot ' + (diff >= 0 ? 'pos' : 'neg') + '"><span>BILANS</span><span>' + signed(diff) + '</span></div>' +
       '<div class="thx">' + (diff >= 0 ? '*** SZCZĘŚCIARZ! ***' : 'Dziękujemy, zapraszamy ponownie!') + '</div>';
     r.classList.remove('on'); void r.offsetWidth; r.classList.add('on');
+    if (H.onFinish) H.onFinish(p);
     if (diff >= 0) S.register(); else S.page();
     hud();
+    if (H.finishHint) { hint(H.finishHint()); return; }
     hint(E.state.wallet >= E.cheapest() ? 'Karty trafiły do albumu. Kolejna paczka? (Spacja = ten sam zestaw, S = sklepik)' : 'Brak kasy na kolejną paczkę – sprzedaj coś w albumie albo weź kieszonkowe.');
   }
 
@@ -305,8 +312,9 @@
     var si = CAT.get(setId);
     if (!E.canBuy(setId)) { toast('Za mało kasy! ' + si.name + ' kosztuje ' + money(si.price)); S.error(); return; }
     closeShop(); clearTable();
+    if (H.beforeBuy) { var why = H.beforeBuy(setId); if (why) { toast(why); S.error(); return; } }
     var opts = { set: setId }; if (force) opts.force = force; if (force && !params.has('always')) force = null;
-    E.buy(Math.random, opts); S.coin(); hud(); ensureReveal(); preloadSet(E.state.pending);
+    E.buy(Math.random, opts); if (H.afterBuy) H.afterBuy(setId); S.coin(); hud(); ensureReveal(); preloadSet(E.state.pending);
     showPack(true); hud();
   }
   /* ---------- sklepik: półka z 4 paczkami ---------- */
@@ -314,9 +322,11 @@
     S.unlock(); S.page();
     var st = E.state, items = '', tags = '';
     CAT.list.forEach(function (si) {
-      var ok = E.canBuy(si.id), owned = E.uniqueCount(si.id);
+      var cs = H.shopState ? H.shopState(si.id) : null;
+      var ok = cs ? cs.ok : E.canBuy(si.id), owned = E.uniqueCount(si.id);
+      if (cs && !cs.unlocked) { items += '<div class="shop-item off locked" data-set="' + si.id + '"><div class="pk-mini"><div class="pk-locked">?</div></div></div>'; tags += '<div class="shop-tag off" data-set="' + si.id + '"><b>???</b><span class="pr">WKRÓTCE</span><small>Zdzisiu mówi: dostawa ok. ' + cs.unlockLabel + '</small></div>'; return; }
       items += '<div class="shop-item' + (ok ? '' : ' off') + (st.lastSet === si.id && st.packs ? ' last' : '') + '" data-set="' + si.id + '"><div class="pk-mini">' + A.packFace(si.id) + '</div></div>';
-      tags += '<div class="shop-tag' + (ok ? '' : ' off') + '" data-set="' + si.id + '"><b>' + si.name + '</b><span class="pr">' + money(si.price) + '</span><small>' + si.perPack + ' kart w paczce · album ' + owned + '/' + si.size + '</small><small>' + A.esc(si.sub) + '</small></div>';
+      tags += '<div class="shop-tag' + (ok ? '' : ' off') + '" data-set="' + si.id + '"><b>' + si.name + '</b><span class="pr">' + money(si.price) + '</span><small>' + (cs ? 'Na półce: <b>' + cs.stock + ' szt.</b>' + (cs.why ? ' · ' + cs.why : '') + '<br>' : '') + si.perPack + ' kart w paczce · album ' + owned + '/' + si.size + '</small><small>' + A.esc(si.sub) + '</small></div>';
     });
     $('shop').innerHTML = '<div class="shop"><div class="shop-head"><div class="shop-title">SKLEPIK „U ZDZISIA”</div><div class="shop-sub">Wybierz paczkę. W portfelu masz <b>' + money(st.wallet) + '</b>.' +
       (st.wallet < E.cheapest() ? ' Za mało na cokolwiek – sprzedaj karty albo weź kieszonkowe.' : '') + '</div><button class="btn mini" data-a="close">ZAMKNIJ ✕</button></div>' +
@@ -326,8 +336,8 @@
   function closeShop() { $('shop').classList.add('hidden'); }
   $('shop').addEventListener('click', function (e) {
     var it = e.target.closest('[data-set]'), b = e.target.closest('[data-a]');
-    if (b || e.target.id === 'shop') { closeShop(); return; }
-    if (it) { if (it.classList.contains('off')) { toast('Za mało kasy na ' + CAT.get(it.dataset.set).name + '!'); S.error(); } else buy(it.dataset.set); }
+    if (b || e.target.id === 'shop') { closeShop(); if (H.onShopClose) H.onShopClose(); return; }
+    if (it) { if (it.classList.contains('off')) { var w = H.shopState ? H.shopState(it.dataset.set).why : ''; toast(w || ('Za mało kasy na ' + CAT.get(it.dataset.set).name + '!')); S.error(); } else buy(it.dataset.set); }
   });
 
   /* ---------- album ---------- */
@@ -359,17 +369,18 @@
       var a = b.dataset.a;
       if (a === 'close') closeAlbum();
       else if (a === 'prev' || a === 'next') { albumPage = (albumPage + (a === 'next' ? 1 : pages() - 1)) % pages(); S.page(); renderAlbum(true); }
-      else if (a === 'dupes') { var got = E.sellDuplicates(albumSet); if (got) { S.register(); toast('Sprzedano duplikaty za ' + money(got)); } renderAlbum(); hud(); }
+      else if (a === 'dupes') { if (H.canSell && !H.canSell()) { toast(H.sellMsg); S.error(); return; } var got = sellDupes(albumSet); if (got) { S.register(); toast('Sprzedano duplikaty za ' + money(got)); } renderAlbum(); hud(); }
     } else if (pk) openDetail(pk.dataset.id);
     else if (e.target.id === 'album') closeAlbum();
   });
 
+  function sellDupes(setId) { var t = 0; Object.keys(E.state.collection).forEach(function (id) { var n = E.state.collection[id] - 1; if (n > 0 && CAT.setOf(id) === setId) { var g = E.sell(id, n); t += g; if (H.onSold) H.onSold(id, n, g); } }); return D.round2(t); }
   function openDetail(id) {
     var c = D.BY_ID[id], n = E.state.collection[id] || 0, t = D.TIERS[c.tier], sp = E.sellPrice(id);
     var el = $('detail');
     el.innerHTML = '<div class="dt-card"><div class="tilt">' + A.cardHTML(c) + '</div></div><div class="dt-hint">Porusz myszką nad kartą</div>' +
       '<div class="dt-info"><h2>' + A.esc(c.name) + '</h2><div class="row">' + CAT.get(CAT.setOf(c)).name + ' · Nr <b>' + CAT.cardNo(c) + '</b> · <b>' + t.name + '</b></div><div class="row">' + A.esc(c.typeLine || ('Stwór ' + c.elName)) + '</div>' +
-      '<div class="big">' + money(c.price) + '</div><div class="row">Cena rynkowa. Sklepik odkupi za <b>' + money(sp) + '</b> (' + Math.round(CAT.get(CAT.setOf(c)).sellRate * 100) + '%).</div>' +
+      '<div class="big">' + money(c.price) + '</div><div class="row">Cena rynkowa. ' + (H.buyer || 'Sklepik') + ' odkupi za <b>' + money(sp) + '</b> (' + Math.round(E.sellRate(id) * 100) + '%).' + (H.sellNote ? ' <i>' + H.sellNote() + '</i>' : '') + '</div>' +
       '<div class="row">Masz: <b>' + n + ' szt.</b></div><div class="btns">' +
       (n ? '<button class="btn" data-a="sell1">SPRZEDAJ 1 · +' + money(sp) + '</button>' : '') + (n > 1 ? '<button class="btn" data-a="sellall">SPRZEDAJ WSZYSTKIE · +' + money(D.round2(sp * n)) + '</button>' : '') +
       '<button class="btn alt" data-a="back">WRÓĆ</button></div></div>';
@@ -380,7 +391,8 @@
     var b = e.target.closest('[data-a]'), id = $('detail').dataset.id;
     if (!b) { if (!e.target.closest('.dt-card') && !e.target.closest('.dt-info')) $('detail').classList.add('hidden'); return; }
     if (b.dataset.a === 'back') { $('detail').classList.add('hidden'); return; }
-    var got = E.sell(id, b.dataset.a === 'sellall' ? 999 : 1);
+    if (H.canSell && !H.canSell()) { toast(H.sellMsg); S.error(); return; }
+    var nn = b.dataset.a === 'sellall' ? (E.state.collection[id] || 0) : 1, got = E.sell(id, nn); if (H.onSold) H.onSold(id, nn, got);
     if (got) { S.register(); toast('Sprzedano za ' + money(got)); }
     hud(); renderAlbum();
     if (E.state.collection[id]) openDetail(id); else $('detail').classList.add('hidden');
@@ -399,6 +411,8 @@
     E.reset(); location.reload();
   });
   addEventListener('keydown', function (e) {
+    if (document.querySelector('.ui-layer:not(.hidden)')) return;   // menu / kariera / kreator mają własną klawiaturę
+    if (e.key === 'Escape' && $('shop').classList.contains('hidden') && $('album').classList.contains('hidden') && $('detail').classList.contains('hidden') && window.PZMenu) { PZMenu.pause(); return; }
     if (e.key === 'Escape') { if (!$('detail').classList.contains('hidden')) $('detail').classList.add('hidden'); else { closeAlbum(); closeShop(); } return; }
     if (!$('shop').classList.contains('hidden')) return;
     if (!$('album').classList.contains('hidden')) { if (e.key === 'ArrowRight') $('album').querySelector('[data-a=next]').click(); if (e.key === 'ArrowLeft') $('album').querySelector('[data-a=prev]').click(); return; }
@@ -409,10 +423,12 @@
     }
     if (e.key === 'a' || e.key === 'A') openAlbum();
     if ((e.key === 's' || e.key === 'S') && (mode === 'empty' || mode === 'summary')) openShop();
+    if ((e.key === 'Backspace' || e.key === 'h' || e.key === 'H') && H.career && (mode === 'empty' || mode === 'summary')) H.home();
   });
 
   /* ---------- start ---------- */
   PZScene.build($('props')); FX.init($('fx'));
+  function restore() {
   var pend = E.state.pending;
   if (pend) {
     ensureReveal();
@@ -424,8 +440,23 @@
     hint(E.state.wallet >= E.cheapest() ? 'Masz ' + money(E.state.wallet) + '. Zajrzyj do sklepiku – 4 zestawy kart czekają!' : 'Pusto w portfelu – weź kieszonkowe albo sprzedaj karty.', true);
   }
   hud();
+  }
+  restore();
+  $('b-home').addEventListener('click', function () { if (H.home) H.home(); });
+  // przełączanie trybu: useMode(ekonomia, haki) – stół czyszczony, niedokończona paczka danego zapisu wraca
+  function openOwned(setId, cost) {   // kariera: paczka z magazynu sklepu
+    if (E.state.pending || !(mode === 'empty' || mode === 'summary')) return false;
+    clearTable(); S.unlock(); E.grant(Math.random, { set: setId, cost: cost }); ensureReveal(); preloadSet(E.state.pending); showPack(true); hud(); return true;
+  }
+  function useMode(econ, hooks) {
+    closeShop(); closeAlbum(); $('detail').classList.add('hidden'); $('receipt').classList.remove('on'); hideTag();
+    cardEls.forEach(function (el) { el.remove(); }); cardEls = []; currentUp = null; asideCount = 0; packwrap.innerHTML = ''; packEl = null; stack.classList.remove('on'); stack.innerHTML = '';
+    if (window.TurboReveal && TurboReveal.active) try { TurboReveal.skip(); } catch (e) { }
+    E = econ || FREE_E; H = hooks || {}; A.setCurrency(H.currency || 'zł'); shown = {}; mode = 'empty'; busy = false; albumSet = 'stwory'; albumPage = 0;
+    restore(); App.E = E;
+  }
 
   // API do testów/automatyzacji
-  window.App = { E: E, D: D, get mode() { return mode; }, get busy() { return busy; }, buy: function (id) { buy(id || demoSet || E.state.lastSet || 'stwory'); }, setTear: function (p) { tear.dir = tear.dir || 1; setTear(p); }, completeTear: completeTear,
+  window.App = { E: E, D: D, useMode: useMode, openOwned: openOwned, get H() { return H; }, hint: hint, toast: toast, hud: function () { hud(); }, FREE_E: FREE_E, isDemo: demo, get mode() { return mode; }, get busy() { return busy; }, buy: function (id) { buy(id || demoSet || E.state.lastSet || 'stwory'); }, setTear: function (p) { tear.dir = tear.dir || 1; setTear(p); }, completeTear: completeTear,
     pullOut: pullOut, advance: advance, openShop: openShop, closeShop: closeShop, CAT: CAT, setAlbum: function (id) { albumSet = id; albumPage = 0; renderAlbum(); }, get revealActive() { return !!(window.TurboReveal && TurboReveal.active); }, openAlbum: openAlbum, closeAlbum: closeAlbum, openDetail: openDetail, finish: finish };
 })();

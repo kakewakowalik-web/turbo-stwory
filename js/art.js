@@ -81,15 +81,16 @@
     cache[card.id] = s; return s;
   }
 
-  function money(v) { return v.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł'; }
+  var CUR = 'zł';
+  function money(v) { if (CUR === '$') return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return v.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł'; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   /* Karty z zestawów Artist: gotowy obrazek WebP + nasze warstwy połysku (holo/iskry/odblask). opts.thumb = miniatura do albumu. */
   function setCardHTML(card, opts) {
-    var rk = D.TIERS[card.tier].rank, src = 'sets/' + (opts && opts.thumb ? card.thumb : card.cardImage);
+    var rk = D.TIERS[card.tier].rank, S = root.PZSets && root.PZSets.SETS[card.set], fm = S && S.meta.foilMasks && S.meta.foilMasks[card.tier], src = 'sets/' + (opts && opts.thumb ? card.thumb : card.cardImage);
     return '<div class="card set-card set-' + card.set + ' t-' + card.tier + (rk >= 3 ? ' shiny' : '') + '" data-id="' + card.id + '">' +
       '<img class="set-img" src="' + src + '" alt="' + esc(card.name) + '" draggable="false">' +
-      (rk >= 3 ? '<div class="holo"></div><div class="sparkle"></div>' : '') + '<div class="glare"></div></div>';
+      (rk >= 3 ? '<div class="holo' + (fm && root.PZFoil && root.PZFoil[fm] ? ' fm" style="-webkit-mask-image:url(' + root.PZFoil[fm] + ');mask-image:url(' + root.PZFoil[fm] + ')' : '') + '"></div><div class="sparkle"></div>' : '') + '<div class="glare"></div></div>';
   }
   function cardHTML(card, opts) {
     if (card.set) return setCardHTML(card, opts);
@@ -140,5 +141,5 @@
       '</div>';
   }
 
-  root.PZArt = { creatureSVG: creatureSVG, cardHTML: cardHTML, packFace: function (setId) { return packHTML(260, 420, 56, setId); }, backHTML: backHTML, packHTML: packHTML, money: money, esc: esc };
+  root.PZArt = { creatureSVG: creatureSVG, cardHTML: cardHTML, packFace: function (setId) { return packHTML(260, 420, 56, setId); }, backHTML: backHTML, packHTML: packHTML, money: money, esc: esc, setCurrency: function (c) { CUR = c; }, get currency() { return CUR; } };
 })(window);
