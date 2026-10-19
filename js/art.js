@@ -84,7 +84,15 @@
   function money(v) { return v.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł'; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
-  function cardHTML(card) {
+  /* Karty z zestawów Artist: gotowy obrazek WebP + nasze warstwy połysku (holo/iskry/odblask). opts.thumb = miniatura do albumu. */
+  function setCardHTML(card, opts) {
+    var rk = D.TIERS[card.tier].rank, src = 'sets/' + (opts && opts.thumb ? card.thumb : card.cardImage);
+    return '<div class="card set-card set-' + card.set + ' t-' + card.tier + (rk >= 3 ? ' shiny' : '') + '" data-id="' + card.id + '">' +
+      '<img class="set-img" src="' + src + '" alt="' + esc(card.name) + '" draggable="false">' +
+      (rk >= 3 ? '<div class="holo"></div><div class="sparkle"></div>' : '') + '<div class="glare"></div></div>';
+  }
+  function cardHTML(card, opts) {
+    if (card.set) return setCardHTML(card, opts);
     var t = D.TIERS[card.tier], rk = t.rank;
     return '<div class="card t-' + card.tier + ' el-' + card.el + (rk >= 3 ? ' shiny' : '') + '" data-id="' + card.id + '">' +
       '<div class="c-frame">' +
@@ -99,12 +107,15 @@
       '<div class="glare"></div></div>';
   }
 
-  function backHTML() {
+  function setInfo(setId) { return root.PZCat && setId ? root.PZCat.get(setId) : null; }
+  function backHTML(setId) {
+    var si = setInfo(setId);
+    if (si && si.cardBack) return '<div class="cback set-back"><img src="' + si.cardBack + '" alt="" draggable="false"></div>';
     return '<div class="cback"><div class="cb-in"><div class="cb-swirl"></div><div class="cb-logo"><span>TURBO</span><span>STWORY</span></div><div class="cb-star">★</div></div></div>';
   }
 
   /* Paczka: korpus + pasek do oderwania (oba z tym samym tłem foliowym, przycięte poszarpaną linią). */
-  function packHTML(W, H, tearY) {
+  function packHTML(W, H, tearY, setId) {
     var pts = [], step = 9, x = 0, rng = D.mulberry32((Math.random() * 1e9) | 0);
     while (x < W) { pts.push([x, tearY + (rng() * 7 - 3.5)]); x += step * (0.6 + rng() * 0.8); }
     pts.push([W, tearY]);
@@ -118,14 +129,16 @@
       '<div class="pk-content"><div class="pk-brand"><div class="pk-logo"><span class="l1">TURBO</span><span class="l2">STWORY</span></div><div class="pk-series">SERIA I · KRYSZTAŁOWA GALAKTYKA</div></div>' +
       '<div class="pk-mascot">' + mascot + '</div><div class="pk-burst"><b>10</b>KART!</div>' +
       '<div class="pk-bottom"><span>KARTY KOLEKCJONERSKIE</span><span>Losowa zawartość · 1993</span></div><div class="pk-notch l"></div><div class="pk-notch r"></div></div><div class="pk-shine"></div>';
-    return '<div class="pack" style="width:' + W + 'px;height:' + H + 'px">' +
+    var si = setInfo(setId);
+    if (si && si.packImage) face = '<img class="pk-img" src="' + si.packImage + '" alt="' + esc(si.name) + '" draggable="false"><div class="pk-shine"></div>';
+    return '<div class="pack' + (si && si.packImage ? ' set-pack' : '') + '" style="width:' + W + 'px;height:' + H + 'px">' +
       '<div class="pk-part pk-body" style="clip-path:' + bodyClip + '">' + face + '</div>' +
-      '<div class="pk-peek" style="top:' + (tearY - 30) + 'px"><i></i><i></i><i></i></div>' +
+      '<div class="pk-peek' + (si ? ' set-' + si.id : '') + '" style="top:' + (tearY - 30) + 'px"><i></i><i></i><i></i></div>' +
       '<div class="pk-edgewrap" style="top:' + (tearY - 6) + 'px;height:14px"><div class="pk-edge" style="width:' + W + 'px;height:14px;clip-path:' + edge + '"></div></div>' +
       '<div class="pk-part pk-strip" style="clip-path:' + strip + '">' + face + '</div>' +
       '<div class="pk-guide" style="top:' + (tearY - 2) + 'px"></div>' +
       '</div>';
   }
 
-  root.PZArt = { creatureSVG: creatureSVG, cardHTML: cardHTML, backHTML: backHTML, packHTML: packHTML, money: money, esc: esc };
+  root.PZArt = { creatureSVG: creatureSVG, cardHTML: cardHTML, packFace: function (setId) { return packHTML(260, 420, 56, setId); }, backHTML: backHTML, packHTML: packHTML, money: money, esc: esc };
 })(window);

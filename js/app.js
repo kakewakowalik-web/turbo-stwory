@@ -10,7 +10,9 @@
   var store = null;
   try { localStorage.setItem('_pz', '1'); localStorage.removeItem('_pz'); store = localStorage; } catch (e) { store = null; }
   // tryb demo nie rusza prawdziwego zapisu
-  var E = PZEconomy.createEconomy(D, demo ? null : store, 'paczki.v1');
+  var CAT = PZCat;
+  var E = PZEconomy.createEconomy(D, demo ? null : store, 'paczki.v1', CAT);
+  var demoSet = CAT.has(params.get('set')) ? params.get('set') : null;
   E.load(); if (demo && params.has('wallet')) E.state.wallet = +params.get('wallet') || E.state.wallet;
   S.setEnabled(E.state.sound);
 
@@ -42,11 +44,16 @@
     $('h-packs').textContent = st.packs;
     $('h-best').textContent = st.best ? D.BY_ID[st.best.id].name + ' · ' + money(st.best.price) : '—';
     var buy = $('b-buy');
-    buy.textContent = 'KUP PACZKĘ · ' + money(D.PACK.price);
-    buy.disabled = !E.canBuy();
-    buy.classList.toggle('pulse', E.canBuy() && (mode === 'empty' || mode === 'summary'));
-    $('b-album').textContent = 'ALBUM ' + E.uniqueCount() + '/' + D.CARDS.length;
-    $('b-pocket').classList.toggle('hidden', !(st.wallet < D.PACK.price && !st.pending));
+    var free = mode === 'empty' || mode === 'summary', last = CAT.get(st.lastSet);
+    buy.textContent = 'SKLEPIK Z PACZKAMI';
+    buy.disabled = !!st.pending;
+    buy.classList.toggle('pulse', free && st.wallet >= E.cheapest() && !(st.packs && E.canBuy(last.id)));
+    var again = $('b-again'); again.textContent = 'JESZCZE RAZ · ' + money(last.price);
+    again.title = last.name;
+    again.classList.toggle('hidden', !(free && st.packs > 0)); again.disabled = !E.canBuy(last.id); again.classList.toggle('pulse', free && E.canBuy(last.id));
+    var tot = CAT.list.reduce(function (a, x) { return a + x.size; }, 0);
+    $('b-album').textContent = 'ALBUM ' + E.uniqueCount() + '/' + tot;
+    $('b-pocket').classList.toggle('hidden', !(st.wallet < E.cheapest() && !st.pending));
     $('b-sound').textContent = 'DŹWIĘK: ' + (st.sound ? 'WŁ' : 'WYŁ');
   }
   function hint(t, blink) { var h = $('hint'); h.textContent = t; h.classList.toggle('blink', !!blink); }
@@ -55,7 +62,7 @@
 
   /* ---------- paczka ---------- */
   function showPack(animate) {
-    packwrap.innerHTML = A.packHTML(PACK_W, PACK_H, TEAR_Y); packEl = packwrap.firstChild;
+    packwrap.innerHTML = A.packHTML(PACK_W, PACK_H, TEAR_Y, curSet()); packEl = packwrap.firstChild;
     packEl.classList.add('hot'); packwrap.style.transform = ''; packwrap.style.display = '';
     if (animate) { packwrap.classList.remove('drop'); void packwrap.offsetWidth; packwrap.classList.add('drop'); }
     tear = { p: 0, dir: 0 }; mode = 'pack';
@@ -152,7 +159,7 @@
     p.cards.forEach(function (id, i) {
       var c = D.BY_ID[id], d = document.createElement('div');
       d.className = 'c3d' + (animate ? ' enter' : '');
-      d.innerHTML = '<div class="tilt"><div class="flip"><div class="face front">' + A.cardHTML(c) + '</div><div class="face back">' + A.backHTML() + '</div></div></div>';
+      d.innerHTML = '<div class="tilt"><div class="flip"><div class="face front">' + A.cardHTML(c) + '</div><div class="face back">' + A.backHTML(p.set) + '</div></div></div>';
       if (animate) d.style.animationDelay = (i * 0.02) + 's';
       stack.appendChild(d); cardEls.push(d);
     });
@@ -195,7 +202,7 @@
     if (!revInit) revInit = TurboReveal.init({ base: 'reveal/', sound: false, onSfx: function (n) { S.sfx(n); } }).catch(function () {});
     return revInit;
   }
-  function revealBack() { var d = document.createElement('div'); d.style.cssText = 'width:300px;height:391px;padding-left:10px'; d.innerHTML = A.backHTML(); return d; }
+  function revealBack() { var d = document.createElement('div'); d.style.cssText = 'width:300px;height:391px;padding-left:10px'; d.innerHTML = A.backHTML(curSet()); return d; }
   function bigReveal(el, c, rank) {
     ensureReveal();
     var res = E.revealNext(), dup = (E.state.collection[c.id] || 0) > 1;
@@ -205,7 +212,7 @@
     TurboReveal.play({ id: c.id }, c.tier, {
       container: $('world'), from: 'back', packEl: revealBack(), speed: speed, waitForTap: rank >= 4, bannerGap: 6, seed: (Math.random() * 1e6) | 0,
       onPhase: function (ph) {
-        if (ph === 'anticipation') { var b = $('world').querySelector('.trv-root .trv-back'); if (b) b.innerHTML = A.backHTML(); }
+        if (ph === 'anticipation') { var b = $('world').querySelector('.trv-root .trv-back'); if (b) b.innerHTML = A.backHTML(curSet()); }
         if (ph === 'skip') S.stopSfx();
       }
     }).then(function () {
@@ -253,20 +260,20 @@
   }
   function finish() {
     mode = 'summary'; stack.classList.remove('on'); hideTag();
-    var p = E.finishPack(), val = p.value, diff = D.round2(val - D.PACK.price);
+    var p = E.finishPack(), val = p.value, diff = D.round2(val - p.price), setI = CAT.get(p.set);
     var lines = p.cards.map(function (id) {
       var c = D.BY_ID[id], t = D.TIERS[c.tier];
-      return '<div class="ln' + (t.rank >= 5 ? ' sr' : t.rank >= 3 ? ' hit' : '') + '"><span>' + c.id + ' ' + A.esc(c.name) + ' (' + t.short + ')</span><span>' + money(c.price).replace(' zł', '') + '</span></div>';
+      return '<div class="ln' + (t.rank >= 5 ? ' sr' : t.rank >= 3 ? ' hit' : '') + '"><span>' + (c.set ? D.pad3(c.num) : c.id) + ' ' + A.esc(c.name) + ' (' + t.short + ')</span><span>' + money(c.price).replace(' zł', '') + '</span></div>';
     }).join('');
     var r = $('receipt');
-    r.innerHTML = '<h3>SKLEPIK „U ZDZISIA”</h3><div class="sub">PARAGON NIEFISKALNY · PACZKA nr ' + E.state.packs + '</div>' + lines +
-      '<hr><div class="ln tot"><span>WARTOŚĆ KART</span><span>' + money(val) + '</span></div><div class="ln"><span>CENA PACZKI</span><span>' + money(D.PACK.price) + '</span></div>' +
+    r.innerHTML = '<h3>SKLEPIK „U ZDZISIA”</h3><div class="sub">PARAGON NIEFISKALNY · PACZKA nr ' + E.state.packs + '<br>' + setI.name + ' · ' + p.cards.length + ' kart</div>' + lines +
+      '<hr><div class="ln tot"><span>WARTOŚĆ KART</span><span>' + money(val) + '</span></div><div class="ln"><span>CENA PACZKI</span><span>' + money(p.price) + '</span></div>' +
       '<div class="ln tot ' + (diff >= 0 ? 'pos' : 'neg') + '"><span>BILANS</span><span>' + signed(diff) + '</span></div>' +
       '<div class="thx">' + (diff >= 0 ? '*** SZCZĘŚCIARZ! ***' : 'Dziękujemy, zapraszamy ponownie!') + '</div>';
     r.classList.remove('on'); void r.offsetWidth; r.classList.add('on');
     if (diff >= 0) S.register(); else S.page();
     hud();
-    hint(E.canBuy() ? 'Karty trafiły do albumu. Kupujesz kolejną paczkę?' : 'Brak kasy na kolejną paczkę – sprzedaj coś w albumie albo weź kieszonkowe.');
+    hint(E.state.wallet >= E.cheapest() ? 'Karty trafiły do albumu. Kolejna paczka? (Spacja = ten sam zestaw, S = sklepik)' : 'Brak kasy na kolejną paczkę – sprzedaj coś w albumie albo weź kieszonkowe.');
   }
 
   /* tilt i połysk pod myszką */
@@ -289,42 +296,70 @@
     cardEls.forEach(function (el, i) { el.style.transition = 'transform .5s ease-in ' + (i * 0.02) + 's, opacity .5s ' + (i * 0.02) + 's'; el.style.transform += ' translate(600px,-300px)'; el.style.opacity = '0'; });
     var old = cardEls; cardEls = []; currentUp = null; setTimeout(function () { old.forEach(function (el) { el.remove(); }); }, 700);
   }
-  function buy() {
+  function curSet() { return (E.state.pending && E.state.pending.set) || E.state.lastSet || 'stwory'; }
+  function preloadSet(p) { p.cards.forEach(function (id) { var c = D.BY_ID[id]; if (c.set) { var im = new Image(); im.src = 'sets/' + c.cardImage; } }); var si = CAT.get(p.set); if (si.cardBack) { var b = new Image(); b.src = si.cardBack; } }
+  function buy(setId) {
     S.unlock();
     if (mode !== 'empty' && mode !== 'summary') { toast('Najpierw otwórz tę paczkę!'); S.error(); return; }
-    if (!E.canBuy()) { toast('Za mało kasy! Paczka kosztuje ' + money(D.PACK.price)); S.error(); return; }
-    clearTable();
-    var opts = force ? { force: force } : undefined; if (force && !params.has('always')) force = null;
-    E.buy(Math.random, opts); S.coin(); hud(); ensureReveal();
+    if (!setId) { openShop(); return; }
+    var si = CAT.get(setId);
+    if (!E.canBuy(setId)) { toast('Za mało kasy! ' + si.name + ' kosztuje ' + money(si.price)); S.error(); return; }
+    closeShop(); clearTable();
+    var opts = { set: setId }; if (force) opts.force = force; if (force && !params.has('always')) force = null;
+    E.buy(Math.random, opts); S.coin(); hud(); ensureReveal(); preloadSet(E.state.pending);
     showPack(true); hud();
   }
+  /* ---------- sklepik: półka z 4 paczkami ---------- */
+  function openShop() {
+    S.unlock(); S.page();
+    var st = E.state, items = '', tags = '';
+    CAT.list.forEach(function (si) {
+      var ok = E.canBuy(si.id), owned = E.uniqueCount(si.id);
+      items += '<div class="shop-item' + (ok ? '' : ' off') + (st.lastSet === si.id && st.packs ? ' last' : '') + '" data-set="' + si.id + '"><div class="pk-mini">' + A.packFace(si.id) + '</div></div>';
+      tags += '<div class="shop-tag' + (ok ? '' : ' off') + '" data-set="' + si.id + '"><b>' + si.name + '</b><span class="pr">' + money(si.price) + '</span><small>' + si.perPack + ' kart w paczce · album ' + owned + '/' + si.size + '</small><small>' + A.esc(si.sub) + '</small></div>';
+    });
+    $('shop').innerHTML = '<div class="shop"><div class="shop-head"><div class="shop-title">SKLEPIK „U ZDZISIA”</div><div class="shop-sub">Wybierz paczkę. W portfelu masz <b>' + money(st.wallet) + '</b>.' +
+      (st.wallet < E.cheapest() ? ' Za mało na cokolwiek – sprzedaj karty albo weź kieszonkowe.' : '') + '</div><button class="btn mini" data-a="close">ZAMKNIJ ✕</button></div>' +
+      '<div class="shelf">' + items + '</div><div class="shop-info">' + tags + '</div></div>';
+    $('shop').classList.remove('hidden');
+  }
+  function closeShop() { $('shop').classList.add('hidden'); }
+  $('shop').addEventListener('click', function (e) {
+    var it = e.target.closest('[data-set]'), b = e.target.closest('[data-a]');
+    if (b || e.target.id === 'shop') { closeShop(); return; }
+    if (it) { if (it.classList.contains('off')) { toast('Za mało kasy na ' + CAT.get(it.dataset.set).name + '!'); S.error(); } else buy(it.dataset.set); }
+  });
 
   /* ---------- album ---------- */
-  var albumPage = 0, PER = 18, PAGES = Math.ceil(D.CARDS.length / PER);
+  var albumPage = 0, albumSet = 'stwory', PER = 18;
+  function pages() { return Math.ceil(CAT.get(albumSet).cards.length / PER); }
   function pocketHTML(c) {
     var n = E.state.collection[c.id] || 0;
-    if (!n) return '<div class="pocket"><div class="num">' + (c.tier === 'SR' ? '<span class="sec">✦</span><br>' : '') + c.id + '<small>' + (c.tier === 'SR' ? '???' : D.TIERS[c.tier].name) + '</small></div></div>';
-    return '<div class="pocket has" data-id="' + c.id + '">' + A.cardHTML(c) + '<div class="sleeve"></div>' + (n > 1 ? '<div class="qty">x' + n + '</div>' : '') + '<div class="pp">' + money(c.price) + '</div></div>';
+    if (!n) return '<div class="pocket"><div class="num">' + (c.tier === 'SR' ? '<span class="sec">✦</span><br>' : '') + (c.set ? D.pad3(c.num) : c.id) + '<small>' + (c.tier === 'SR' ? '???' : D.TIERS[c.tier].name) + '</small></div></div>';
+    return '<div class="pocket has" data-id="' + c.id + '">' + A.cardHTML(c, { thumb: true }) + '<div class="sleeve"></div>' + (n > 1 ? '<div class="qty">x' + n + '</div>' : '') + '<div class="pp">' + money(c.price) + '</div></div>';
   }
   function renderAlbum(turn) {
-    var start = albumPage * PER, cards = D.CARDS.slice(start, start + PER), dv = E.duplicatesValue();
+    var si = CAT.get(albumSet), PAGES = pages(); if (albumPage >= PAGES) albumPage = 0;
+    var start = albumPage * PER, cards = si.cards.slice(start, start + PER), dv = E.duplicatesValue(albumSet);
     var pg = function (arr, cls) { var h = arr.map(pocketHTML).join(''); for (var i = arr.length; i < 9; i++) h += '<div class="pocket" style="visibility:hidden"></div>'; return '<div class="page ' + cls + (turn ? ' turn' : '') + '">' + h + '</div>'; };
-    var dupes = 0; for (var id in E.state.collection) dupes += E.state.collection[id] - 1;
+    var dupes = E.duplicatesCount(albumSet);
+    var tabs = CAT.list.map(function (x) { var u = E.uniqueCount(x.id); return '<div class="al-tab' + (x.id === albumSet ? ' on' : '') + (u === x.size ? ' done' : '') + '" data-tab="' + x.id + '">' + x.name + '<span>' + u + '/' + x.size + '</span></div>'; }).join('');
     $('album').innerHTML = '<div class="binder"><div class="al-head"><div class="al-title">MÓJ ALBUM</div>' +
-      '<div class="al-stats">Zebrane: <b>' + E.uniqueCount() + '/' + D.CARDS.length + '</b> · Wartość kolekcji: <b>' + money(E.collectionValue()) + '</b> · Duplikaty: <b>' + dupes + '</b></div>' +
+      '<div class="al-stats">' + si.name + ': <b>' + E.uniqueCount(albumSet) + '/' + si.size + '</b> · wartość: <b>' + money(E.collectionValue(albumSet)) + '</b> · duplikaty: <b>' + dupes + '</b><br>Cała kolekcja: <b>' + money(E.collectionValue()) + '</b></div>' +
       '<button class="btn mini" data-a="prev">◄</button><span class="pg-num">STR. ' + (albumPage + 1) + '/' + PAGES + '</span><button class="btn mini" data-a="next">►</button>' +
       '<button class="btn mini" data-a="dupes"' + (dv > 0 ? '' : ' disabled') + '>SPRZEDAJ DUPLIKATY +' + money(dv) + '</button><button class="btn mini" data-a="close">ZAMKNIJ ✕</button></div>' +
-      '<div class="pages">' + pg(cards.slice(0, 9), 'l') + pg(cards.slice(9, 18), 'r') + '<div class="rings"><i></i><i></i><i></i><i></i></div></div></div>';
+      '<div class="al-tabs">' + tabs + '</div><div class="pages">' + pg(cards.slice(0, 9), 'l') + pg(cards.slice(9, 18), 'r') + '<div class="rings"><i></i><i></i><i></i><i></i></div></div></div>';
   }
   function openAlbum() { S.unlock(); S.page(); renderAlbum(); $('album').classList.remove('hidden'); }
   function closeAlbum() { $('album').classList.add('hidden'); }
   $('album').addEventListener('click', function (e) {
-    var b = e.target.closest('[data-a]'), pk = e.target.closest('.pocket.has');
+    var b = e.target.closest('[data-a]'), pk = e.target.closest('.pocket.has'), tb = e.target.closest('[data-tab]');
+    if (tb) { albumSet = tb.dataset.tab; albumPage = 0; S.page(); renderAlbum(true); return; }
     if (b) {
       var a = b.dataset.a;
       if (a === 'close') closeAlbum();
-      else if (a === 'prev' || a === 'next') { albumPage = (albumPage + (a === 'next' ? 1 : PAGES - 1)) % PAGES; S.page(); renderAlbum(true); }
-      else if (a === 'dupes') { var got = E.sellDuplicates(); if (got) { S.register(); toast('Sprzedano duplikaty za ' + money(got)); } renderAlbum(); hud(); }
+      else if (a === 'prev' || a === 'next') { albumPage = (albumPage + (a === 'next' ? 1 : pages() - 1)) % pages(); S.page(); renderAlbum(true); }
+      else if (a === 'dupes') { var got = E.sellDuplicates(albumSet); if (got) { S.register(); toast('Sprzedano duplikaty za ' + money(got)); } renderAlbum(); hud(); }
     } else if (pk) openDetail(pk.dataset.id);
     else if (e.target.id === 'album') closeAlbum();
   });
@@ -333,8 +368,8 @@
     var c = D.BY_ID[id], n = E.state.collection[id] || 0, t = D.TIERS[c.tier], sp = E.sellPrice(id);
     var el = $('detail');
     el.innerHTML = '<div class="dt-card"><div class="tilt">' + A.cardHTML(c) + '</div></div><div class="dt-hint">Porusz myszką nad kartą</div>' +
-      '<div class="dt-info"><h2>' + A.esc(c.name) + '</h2><div class="row">Nr <b>' + c.id + '/' + D.SET.size + '</b> · <b>' + t.name + '</b> · Stwór ' + c.elName + '</div>' +
-      '<div class="big">' + money(c.price) + '</div><div class="row">Cena rynkowa. Sklepik odkupi za <b>' + money(sp) + '</b> (' + Math.round(D.PACK.sellRate * 100) + '%).</div>' +
+      '<div class="dt-info"><h2>' + A.esc(c.name) + '</h2><div class="row">' + CAT.get(CAT.setOf(c)).name + ' · Nr <b>' + CAT.cardNo(c) + '</b> · <b>' + t.name + '</b></div><div class="row">' + A.esc(c.typeLine || ('Stwór ' + c.elName)) + '</div>' +
+      '<div class="big">' + money(c.price) + '</div><div class="row">Cena rynkowa. Sklepik odkupi za <b>' + money(sp) + '</b> (' + Math.round(CAT.get(CAT.setOf(c)).sellRate * 100) + '%).</div>' +
       '<div class="row">Masz: <b>' + n + ' szt.</b></div><div class="btns">' +
       (n ? '<button class="btn" data-a="sell1">SPRZEDAJ 1 · +' + money(sp) + '</button>' : '') + (n > 1 ? '<button class="btn" data-a="sellall">SPRZEDAJ WSZYSTKIE · +' + money(D.round2(sp * n)) + '</button>' : '') +
       '<button class="btn alt" data-a="back">WRÓĆ</button></div></div>';
@@ -352,7 +387,8 @@
   });
 
   /* ---------- przyciski i klawiatura ---------- */
-  $('b-buy').addEventListener('click', buy);
+  $('b-buy').addEventListener('click', function () { buy(); });
+  $('b-again').addEventListener('click', function () { buy(E.state.lastSet); });
   $('b-album').addEventListener('click', openAlbum);
   $('b-pocket').addEventListener('click', function () { var g = E.pocketMoney(); if (g) { S.coin(); toast('Babcia dała ' + money(g) + ' kieszonkowego!'); } hud(); if (mode === 'empty' || mode === 'summary') hint('Kup paczkę, żeby zacząć!'); });
   $('b-sound').addEventListener('click', function () { E.setSound(!E.state.sound); S.setEnabled(E.state.sound); S.click(); hud(); });
@@ -363,14 +399,16 @@
     E.reset(); location.reload();
   });
   addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { if (!$('detail').classList.contains('hidden')) $('detail').classList.add('hidden'); else closeAlbum(); return; }
+    if (e.key === 'Escape') { if (!$('detail').classList.contains('hidden')) $('detail').classList.add('hidden'); else { closeAlbum(); closeShop(); } return; }
+    if (!$('shop').classList.contains('hidden')) return;
     if (!$('album').classList.contains('hidden')) { if (e.key === 'ArrowRight') $('album').querySelector('[data-a=next]').click(); if (e.key === 'ArrowLeft') $('album').querySelector('[data-a=prev]').click(); return; }
     if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') {
       e.preventDefault(); S.unlock();
       if (mode === 'pack') { tear.dir = tear.dir || 1; S.crinkle(1); setTear(Math.min(1, tear.p + 0.34)); if (tear.p >= 1) completeTear(); }
-      else if (mode === 'torn') pullOut(); else if (mode === 'reveal') advance(); else if (mode === 'empty' || mode === 'summary') buy();
+      else if (mode === 'torn') pullOut(); else if (mode === 'reveal') advance(); else if (mode === 'empty' || mode === 'summary') { if (E.state.packs && E.canBuy(E.state.lastSet)) buy(E.state.lastSet); else openShop(); }
     }
     if (e.key === 'a' || e.key === 'A') openAlbum();
+    if ((e.key === 's' || e.key === 'S') && (mode === 'empty' || mode === 'summary')) openShop();
   });
 
   /* ---------- start ---------- */
@@ -383,11 +421,11 @@
       else { buildStack(false); mode = 'reveal'; stack.classList.add('on'); hint('Wracamy do otwartej paczki – kliknij stos, żeby odkrywać dalej', true); }
     } else showPack(false);
   } else {
-    hint(E.canBuy() ? 'Masz ' + money(E.state.wallet) + '. Kup paczkę TURBO STWORÓW i sprawdź szczęście!' : 'Pusto w portfelu – weź kieszonkowe albo sprzedaj karty.', true);
+    hint(E.state.wallet >= E.cheapest() ? 'Masz ' + money(E.state.wallet) + '. Zajrzyj do sklepiku – 4 zestawy kart czekają!' : 'Pusto w portfelu – weź kieszonkowe albo sprzedaj karty.', true);
   }
   hud();
 
   // API do testów/automatyzacji
-  window.App = { E: E, D: D, get mode() { return mode; }, get busy() { return busy; }, buy: buy, setTear: function (p) { tear.dir = tear.dir || 1; setTear(p); }, completeTear: completeTear,
-    pullOut: pullOut, advance: advance, get revealActive() { return !!(window.TurboReveal && TurboReveal.active); }, openAlbum: openAlbum, closeAlbum: closeAlbum, openDetail: openDetail, finish: finish };
+  window.App = { E: E, D: D, get mode() { return mode; }, get busy() { return busy; }, buy: function (id) { buy(id || demoSet || E.state.lastSet || 'stwory'); }, setTear: function (p) { tear.dir = tear.dir || 1; setTear(p); }, completeTear: completeTear,
+    pullOut: pullOut, advance: advance, openShop: openShop, closeShop: closeShop, CAT: CAT, setAlbum: function (id) { albumSet = id; albumPage = 0; renderAlbum(); }, get revealActive() { return !!(window.TurboReveal && TurboReveal.active); }, openAlbum: openAlbum, closeAlbum: closeAlbum, openDetail: openDetail, finish: finish };
 })();
