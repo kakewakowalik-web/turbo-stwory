@@ -292,3 +292,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a0e06; fon
 .dt-info .btn { font-size: 14px; }
 .dt-hint { position: absolute; left: 230px; top: 630px; width: 330px; text-align: center; color: #cbb; font: 700 12px "Trebuchet MS"; }
 .pack.wiggle { animation: chargeShake .1s linear 4; }
+
+/* ===== TurboReveal (moduł Artist) – dopasowanie do stołu ===== */
+#world .trv-root .trv-stage { margin-top: 30px; }                       /* środek karty = środek naszego stosu (y 375) */
+#world .trv-stage > .trv-dim, #world .trv-stage > .trv-vig { inset: -140px -60px; }  /* przyciemnienie na cały stół, nie tylko 1280x720 */
+#world .trv-card .trv-face { left: 10px; right: 10px; border-radius: 15px; }       /* proporcje naszej karty 15x21em */
+#world .trv-front .card .holo { display: none; }                         /* UR/SR: zostaje folia z modułu + nasze iskry i odblask – bez podwójnej tęczy */
+#world .trv-front .card.t-SR .sparkle { opacity: .6; }
+#world .trv-back .cback, #world .trv-pack .cback { font-size: 18.6px; }

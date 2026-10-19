@@ -23,7 +23,7 @@
     var g = ctx.createGain(); env(g, t, 0.01, peak || 0.15, dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
   }
   var A = {
-    setEnabled: function (on) { enabled = !!on; },
+    setEnabled: function (on) { enabled = !!on; if (!enabled) A.stopSfx(); },
     get enabled() { return enabled; },
     unlock: function () { if (enabled) init(); },
     crinkle: function (amt) { // szelest folii przy przeciąganiu
@@ -58,5 +58,30 @@
     page: function () { if (!ok()) return; noise(ctx.currentTime, 0.18, 'bandpass', 1500, 0.8, 0.3, 4000); },
     error: function () { if (!ok()) return; var t = ctx.currentTime; tone(t, 200, 0.15, 'square', 0.08); tone(t + 0.15, 150, 0.2, 'square', 0.08); }
   };
+  /* Efekty z modułu odkrycia (TurboReveal.onSfx): pliki OGG z reveal/audio/, a gdy przeglądarka ich nie zagra – synteza. */
+  var files = {}, filePlaying = [], fileBase = 'reveal/audio/';
+  var canOgg = (function () { try { return !!new Audio().canPlayType('audio/ogg; codecs="vorbis"'); } catch (e) { return false; } })();
+  function synthSfx(name) {
+    if (!ok()) return; var t = ctx.currentTime;
+    if (/^riser_/.test(name)) A.riser({ riser_short: 0.8, riser_mid: 1.4, riser_long: 2.4 }[name] || 1);
+    else if (name === 'burst') { noise(t, 0.7, 'lowpass', 1200, 0.6, 0.9, 120); tone(t, 90, 0.6, 'sine', 0.5, 30); }
+    else if (name === 'burst_small') { noise(t, 0.3, 'lowpass', 2500, 0.6, 0.5, 300); tone(t, 160, 0.25, 'sine', 0.25, 60); }
+    else if (name === 'flip') A.flip(); else if (name === 'whoosh') A.whoosh();
+    else if (name === 'shimmer' || name === 'sparkle') A.sparkle(); else if (name === 'tap') A.click();
+    else if (name === 'fanfare_SR') A.fanfare();
+    else if (/^fanfare_/.test(name)) A.reveal({ fanfare_C: 0, fanfare_U: 1, fanfare_R: 2, fanfare_H: 3, fanfare_UR: 4 }[name] || 0);
+  }
+  A.sfx = function (name, vol) {
+    if (!enabled) return;
+    var a = files[name];
+    if (!a && canOgg) { a = files[name] = new Audio(fileBase + name + '.ogg'); a.preload = 'auto'; a.addEventListener('error', function () { a.failed = true; }); }
+    if (!a || a.failed) { synthSfx(name); return; }
+    try {
+      var c = a.cloneNode(); c.volume = Math.max(0, Math.min(1, (vol || 1) * 0.8));
+      var pr = c.play(); if (pr && pr.catch) pr.catch(function () { a.failed = true; synthSfx(name); });
+      filePlaying.push(c); c.addEventListener('ended', function () { var i = filePlaying.indexOf(c); if (i >= 0) filePlaying.splice(i, 1); });
+    } catch (e) { synthSfx(name); }
+  };
+  A.stopSfx = function () { filePlaying.forEach(function (c) { try { c.pause(); } catch (e) {} }); filePlaying = []; };
   root.PZAudio = A;
 })(window);

@@ -1,0 +1,49 @@
+{
+ "sparkle_sheet.png": {
+  "frame": [
+   64,
+   64
+  ],
+  "frames": 8,
+  "fps": 16
+ },
+ "sparkle_sheet_gold.png": {
+  "frame": [
+   64,
+   64
+  ],
+  "frames": 8,
+  "fps": 16
+ },
+ "confetti_sheet.png": {
+  "frame": [
+   32,
+   32
+  ],
+  "frames": 8,
+  "rows": [
+   "yellow",
+   "red",
+   "blue",
+   "magenta",
+   "cyan",
+   "green"
+  ],
+  "fps": 18
+ },
+ "confetti_stars.png": {
+  "frame": [
+   32,
+   32
+  ],
+  "frames": 1,
+  "cols": [
+   "yellow",
+   "red",
+   "blue",
+   "magenta",
+   "cyan",
+   "green"
+  ]
+ }
+}

@@ -187,9 +187,37 @@
     if (p.revealed >= p.cards.length) { finish(); return; }
     flipNext();
   }
+  /* ---------- TurboReveal (moduł Artist): wielkie odkrycie dla Rzadkiej i wyżej ---------- */
+  var revInit = null;
+  var REV_SPEED = { R: 1.6, H: 1.2, UR: 1, SR: 1 };   // R ma zostać szybka (~0,8 s), show jest dla UR/SR
+  function ensureReveal() {
+    if (!window.TurboReveal) return null;
+    if (!revInit) revInit = TurboReveal.init({ base: 'reveal/', sound: false, onSfx: function (n) { S.sfx(n); } }).catch(function () {});
+    return revInit;
+  }
+  function revealBack() { var d = document.createElement('div'); d.style.cssText = 'width:300px;height:391px;padding-left:10px'; d.innerHTML = A.backHTML(); return d; }
+  function bigReveal(el, c, rank) {
+    ensureReveal();
+    var res = E.revealNext(), dup = (E.state.collection[c.id] || 0) > 1;
+    el.style.visibility = 'hidden';
+    var speed = REV_SPEED[c.tier] * (dup && rank < 5 ? 1.7 : 1);
+    if (rank >= 4) hint('Kliknij albo naciśnij Spację, żeby pominąć animację', false);
+    TurboReveal.play({ id: c.id }, c.tier, {
+      container: $('world'), from: 'back', packEl: revealBack(), speed: speed, waitForTap: rank >= 4, bannerGap: 6, seed: (Math.random() * 1e6) | 0,
+      onPhase: function (ph) {
+        if (ph === 'anticipation') { var b = $('world').querySelector('.trv-root .trv-back'); if (b) b.innerHTML = A.backHTML(); }
+        if (ph === 'skip') S.stopSfx();
+      }
+    }).then(function () {
+      var f = el.querySelector('.flip'); f.style.transition = 'none'; el.classList.add('up'); void f.offsetWidth; f.style.transition = '';
+      el.style.visibility = ''; currentUp = el;
+      onRevealed(res, true); busy = false;
+    });
+  }
   function flipNext() {
     var p = E.state.pending, idx = p.revealed, el = cardEls[idx], c = D.BY_ID[p.cards[idx]], rank = D.TIERS[c.tier].rank;
     restack(idx); busy = true;
+    if (rank >= 2 && window.TurboReveal) { bigReveal(el, c, rank); return; }
     var pre = rank >= 5 ? 2000 : rank === 4 ? 1100 : rank === 3 ? 550 : 0;
     if (pre) {
       el.classList.add('charge', 'charge-' + c.tier); S.riser(pre / 1000);
@@ -203,13 +231,17 @@
       setTimeout(function () { onRevealed(res); busy = false; }, rank >= 3 ? 420 : 250);
     }, pre);
   }
-  function onRevealed(res) {
+  function onRevealed(res, viaModule) {
     var c = res.card, rank = D.TIERS[c.tier].rank, p = E.state.pending;
-    S.reveal(rank); showTag(c); hud();
+    if (!viaModule) S.reveal(rank); showTag(c); hud();
     var left = p.cards.length - p.revealed;
-    if (rank === 3) { FX.burst(640, 380, 40, { stars: true, power: 6, grav: 0.05 }); FX.flash($('flash')); }
-    if (rank === 4) { FX.flash($('flash')); FX.shake(shaker, 'shake-s'); FX.burst(640, 380, 120, { stars: true, power: 10 }); }
-    if (rank >= 5) {
+    if (viaModule) {   // pokaz już był w module – tu tylko cena (dla SR duża) i trochę iskier na stole
+      if (rank >= 3) FX.burst(640, 380, rank >= 5 ? 90 : 30, { stars: true, power: rank >= 5 ? 9 : 5, grav: 0.05 });
+      if (rank >= 5) { S.register(); var pp = $('pop'); pp.innerHTML = '<div class="p1">✦ SEKRETNA KARTA! ✦</div><div class="p2">' + money(c.price) + '</div>'; pp.classList.remove('go'); void pp.offsetWidth; pp.classList.add('go'); }
+    }
+    else if (rank === 3) { FX.burst(640, 380, 40, { stars: true, power: 6, grav: 0.05 }); FX.flash($('flash')); }
+    if (!viaModule && rank === 4) { FX.flash($('flash')); FX.shake(shaker, 'shake-s'); FX.burst(640, 380, 120, { stars: true, power: 10 }); }
+    if (!viaModule && rank >= 5) {
       FX.flash($('flash'), true); FX.shake(shaker);
       FX.burst(640, 380, 260, { power: 14 }); setTimeout(function () { FX.burst(300, 800, 120, { up: true, power: 20 }); FX.burst(980, 800, 120, { up: true, power: 20 }); }, 250);
       var pop = $('pop'); pop.innerHTML = '<div class="p1">✦ SEKRETNA KARTA! ✦</div><div class="p2">' + money(c.price) + '</div>';
@@ -263,7 +295,7 @@
     if (!E.canBuy()) { toast('Za mało kasy! Paczka kosztuje ' + money(D.PACK.price)); S.error(); return; }
     clearTable();
     var opts = force ? { force: force } : undefined; if (force && !params.has('always')) force = null;
-    E.buy(Math.random, opts); S.coin(); hud();
+    E.buy(Math.random, opts); S.coin(); hud(); ensureReveal();
     showPack(true); hud();
   }
 
@@ -345,6 +377,7 @@
   PZScene.build($('props')); FX.init($('fx'));
   var pend = E.state.pending;
   if (pend) {
+    ensureReveal();
     if (pend.pulled) {
       if (pend.revealed >= pend.cards.length) { buildStack(false); mode = 'reveal'; finish(); }
       else { buildStack(false); mode = 'reveal'; stack.classList.add('on'); hint('Wracamy do otwartej paczki – kliknij stos, żeby odkrywać dalej', true); }
@@ -356,5 +389,5 @@
 
   // API do testów/automatyzacji
   window.App = { E: E, D: D, get mode() { return mode; }, get busy() { return busy; }, buy: buy, setTear: function (p) { tear.dir = tear.dir || 1; setTear(p); }, completeTear: completeTear,
-    pullOut: pullOut, advance: advance, openAlbum: openAlbum, closeAlbum: closeAlbum, openDetail: openDetail, finish: finish };
+    pullOut: pullOut, advance: advance, get revealActive() { return !!(window.TurboReveal && TurboReveal.active); }, openAlbum: openAlbum, closeAlbum: closeAlbum, openDetail: openDetail, finish: finish };
 })();
