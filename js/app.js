@@ -62,6 +62,7 @@
   }
   function hint(t, blink) { var h = $('hint'); h.textContent = t; h.classList.toggle('blink', !!blink); }
   var toastT;
+  function cvl(c) { return E.cardValue ? E.cardValue(c) : c.price; }
   function toast(t) { var el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove('on'); }, 2200); }
 
   /* ---------- paczka ---------- */
@@ -186,7 +187,7 @@
   function showTag(c) {
     var t = D.TIERS[c.tier], el = $('tag');
     el.className = 'r-' + c.tier;
-    el.innerHTML = '<span class="tr ' + c.tier + '">' + t.name.toUpperCase() + '</span><span class="pr">' + money(c.price) + '</span>';
+    el.innerHTML = '<span class="tr ' + c.tier + '">' + t.name.toUpperCase() + '</span><span class="pr">' + money(cvl(c)) + '</span>';
     void el.offsetWidth; el.classList.add('on');
   }
   function hideTag() { $('tag').classList.remove('on'); }
@@ -211,7 +212,7 @@
     ensureReveal();
     var res = E.revealNext(), dup = (E.state.collection[c.id] || 0) > 1;
     el.style.visibility = 'hidden';
-    var speed = REV_SPEED[c.tier] * (dup && rank < 5 ? 1.7 : 1) * (window.PZSettings ? PZSettings.get().speed : 1);
+    var speed = REV_SPEED[c.tier] * (dup && rank < 5 ? 1.7 : 1) * (window.PZSettings ? PZSettings.get().speed : 1) * (H.revealSpeed || 1);
     if (rank >= 4) hint('Kliknij albo naciśnij Spację, żeby pominąć animację', false);
     TurboReveal.play({ id: c.id }, c.tier, {
       container: $('world'), from: 'back', packEl: revealBack(), speed: speed, waitForTap: rank >= 4, bannerGap: 6, seed: (Math.random() * 1e6) | 0,
@@ -249,17 +250,17 @@
     var left = p.cards.length - p.revealed;
     if (viaModule) {   // pokaz już był w module – tu tylko cena (dla SR duża) i trochę iskier na stole
       if (rank >= 3) FX.burst(640, 380, rank >= 5 ? 90 : 30, { stars: true, power: rank >= 5 ? 9 : 5, grav: 0.05 });
-      if (rank >= 5) { S.register(); var pp = $('pop'); pp.innerHTML = '<div class="p1">✦ SEKRETNA KARTA! ✦</div><div class="p2">' + money(c.price) + '</div>'; pp.classList.remove('go'); void pp.offsetWidth; pp.classList.add('go'); }
+      if (rank >= 5) { S.register(); var pp = $('pop'); pp.innerHTML = '<div class="p1">✦ SEKRETNA KARTA! ✦</div><div class="p2">' + money(cvl(c)) + '</div>'; pp.classList.remove('go'); void pp.offsetWidth; pp.classList.add('go'); }
     }
     else if (rank === 3) { FX.burst(640, 380, 40, { stars: true, power: 6, grav: 0.05 }); FX.flash($('flash')); }
     if (!viaModule && rank === 4) { FX.flash($('flash')); FX.shake(shaker, 'shake-s'); FX.burst(640, 380, 120, { stars: true, power: 10 }); }
     if (!viaModule && rank >= 5) {
       FX.flash($('flash'), true); FX.shake(shaker);
       FX.burst(640, 380, 260, { power: 14 }); setTimeout(function () { FX.burst(300, 800, 120, { up: true, power: 20 }); FX.burst(980, 800, 120, { up: true, power: 20 }); }, 250);
-      var pop = $('pop'); pop.innerHTML = '<div class="p1">✦ SEKRETNA KARTA! ✦</div><div class="p2">' + money(c.price) + '</div>';
+      var pop = $('pop'); pop.innerHTML = '<div class="p1">✦ SEKRETNA KARTA! ✦</div><div class="p2">' + money(cvl(c)) + '</div>';
       pop.classList.remove('go'); void pop.offsetWidth; pop.classList.add('go');
     }
-    if (rank >= 2 && res.isBest && E.state.packs > 1) setTimeout(function () { toast('NOWY REKORD! ' + c.name + ' – ' + money(c.price)); }, 300);
+    if (rank >= 2 && res.isBest && E.state.packs > 1) setTimeout(function () { toast('NOWY REKORD! ' + c.name + ' – ' + money(cvl(c))); }, 300);
     if (rank >= 4) hint(c.name + '! Porusz myszką nad kartą, żeby zobaczyć połysk.');
     else hint(left ? 'Zostało ' + left + (left === 1 ? ' karta' : left < 5 ? ' karty' : ' kart') + ' – klikaj dalej' + (left === 1 ? ' (ostatnia bywa rzadka!)' : '') : 'To ostatnia karta. Kliknij, żeby podsumować paczkę.');
   }
@@ -268,7 +269,7 @@
     var p = E.finishPack(), val = p.value, diff = D.round2(val - p.price), setI = CAT.get(p.set);
     var lines = p.cards.map(function (id) {
       var c = D.BY_ID[id], t = D.TIERS[c.tier];
-      return '<div class="ln' + (t.rank >= 5 ? ' sr' : t.rank >= 3 ? ' hit' : '') + '"><span>' + (c.set ? D.pad3(c.num) : c.id) + ' ' + A.esc(c.name) + ' (' + t.short + ')</span><span>' + money(c.price).replace(' zł', '') + '</span></div>';
+      return '<div class="ln' + (t.rank >= 5 ? ' sr' : t.rank >= 3 ? ' hit' : '') + '"><span>' + (c.set ? D.pad3(c.num) : c.id) + ' ' + A.esc(c.name) + ' (' + t.short + ')</span><span>' + money(cvl(c)).replace(' zł', '') + '</span></div>';
     }).join('');
     var r = $('receipt');
     r.innerHTML = '<h3>' + (H.receiptTitle || 'SKLEPIK „U ZDZISIA”') + '</h3><div class="sub">' + (H.receiptSub || 'PARAGON NIEFISKALNY') + ' · PACZKA nr ' + E.state.packs + '<br>' + setI.name + ' · ' + p.cards.length + ' kart</div>' + lines +
@@ -346,7 +347,7 @@
   function pocketHTML(c) {
     var n = E.state.collection[c.id] || 0;
     if (!n) return '<div class="pocket"><div class="num">' + (c.tier === 'SR' ? '<span class="sec">✦</span><br>' : '') + (c.set ? D.pad3(c.num) : c.id) + '<small>' + (c.tier === 'SR' ? '???' : D.TIERS[c.tier].name) + '</small></div></div>';
-    return '<div class="pocket has" data-id="' + c.id + '">' + A.cardHTML(c, { thumb: true }) + '<div class="sleeve"></div>' + (n > 1 ? '<div class="qty">x' + n + '</div>' : '') + '<div class="pp">' + money(c.price) + '</div></div>';
+    return '<div class="pocket has" data-id="' + c.id + '">' + A.cardHTML(c, { thumb: true }) + '<div class="sleeve"></div>' + (n > 1 ? '<div class="qty">x' + n + '</div>' : '') + '<div class="pp">' + money(cvl(c)) + '</div></div>';
   }
   function renderAlbum(turn) {
     var si = CAT.get(albumSet), PAGES = pages(); if (albumPage >= PAGES) albumPage = 0;
@@ -380,7 +381,7 @@
     var el = $('detail');
     el.innerHTML = '<div class="dt-card"><div class="tilt">' + A.cardHTML(c) + '</div></div><div class="dt-hint">Porusz myszką nad kartą</div>' +
       '<div class="dt-info"><h2>' + A.esc(c.name) + '</h2><div class="row">' + CAT.get(CAT.setOf(c)).name + ' · Nr <b>' + CAT.cardNo(c) + '</b> · <b>' + t.name + '</b></div><div class="row">' + A.esc(c.typeLine || ('Stwór ' + c.elName)) + '</div>' +
-      '<div class="big">' + money(c.price) + '</div><div class="row">Cena rynkowa. ' + (H.buyer || 'Sklepik') + ' odkupi za <b>' + money(sp) + '</b> (' + Math.round(E.sellRate(id) * 100) + '%).' + (H.sellNote ? ' <i>' + H.sellNote() + '</i>' : '') + '</div>' +
+      '<div class="big">' + money(cvl(c)) + '</div><div class="row">Cena rynkowa. ' + (H.buyer || 'Sklepik') + ' odkupi za <b>' + money(sp) + '</b> (' + Math.round(E.sellRate(id) * 100) + '%).' + (H.sellNote ? ' <i>' + H.sellNote() + '</i>' : '') + '</div>' +
       '<div class="row">Masz: <b>' + n + ' szt.</b></div><div class="btns">' +
       (n ? '<button class="btn" data-a="sell1">SPRZEDAJ 1 · +' + money(sp) + '</button>' : '') + (n > 1 ? '<button class="btn" data-a="sellall">SPRZEDAJ WSZYSTKIE · +' + money(D.round2(sp * n)) + '</button>' : '') +
       '<button class="btn alt" data-a="back">WRÓĆ</button></div></div>';

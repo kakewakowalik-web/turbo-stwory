@@ -59,19 +59,21 @@
       S.pending = { set: sid, price: o.cost != null ? o.cost : set.price, cards: lucky(set, set.roll(rng), rng), revealed: 0, pulled: false, value: 0, owned: true };
       S.spent = r2(S.spent + (o.cost || 0)); save(); return S.pending;
     }
+    // kariera: wartości kart w realnych dolarach z 1991 (opts.valueScale), gra swobodna = 1 (zł)
+    function cv(id) { var c = typeof id === 'object' ? id : D.BY_ID[id]; return opts.valueScale ? Math.max(0.05, r2(c.price * opts.valueScale)) : c.price; }
     function markPulled() { if (S.pending) { S.pending.pulled = true; save(); } }
     function revealNext() {
       var p = S.pending; if (!p || p.revealed >= p.cards.length) return null;
       var c = D.BY_ID[p.cards[p.revealed++]];
       S.collection[c.id] = (S.collection[c.id] || 0) + 1;
-      S.pulled = r2(S.pulled + c.price); p.value = r2(p.value + c.price);
+      var cp = cv(c); S.pulled = r2(S.pulled + cp); p.value = r2(p.value + cp);
       S.tierHits[c.tier] = (S.tierHits[c.tier] || 0) + 1;
-      var isBest = !S.best || c.price > S.best.price;
-      if (isBest) S.best = { id: c.id, price: c.price };
+      var isBest = !S.best || cp > S.best.price;
+      if (isBest) S.best = { id: c.id, price: cp };
       save(); return { card: c, isBest: isBest };
     }
     function finishPack() { var p = S.pending; if (!p) return null; while (p.revealed < p.cards.length) revealNext(); S.pending = null; save(); return p; }
-    function sellPrice(id) { var c = D.BY_ID[id]; return r2(c.price * (opts.sellRate || cat.get(cat.setOf(c)).sellRate)); }
+    function sellPrice(id) { var c = D.BY_ID[id]; return r2(cv(c) * (opts.sellRate || cat.get(cat.setOf(c)).sellRate)); }
     function sellRate(id) { return opts.sellRate || cat.get(cat.setOf(id)).sellRate; }
     function sell(id, n) {
       n = n || 1; var have = S.collection[id] || 0; n = Math.min(n, have); if (!n) return 0;
@@ -84,7 +86,7 @@
     function duplicatesCount(setId) { var t = 0; ids(setId).forEach(function (id) { t += S.collection[id] - 1; }); return t; }
     function sellDuplicates(setId) { var t = 0; ids(setId).forEach(function (id) { if (S.collection[id] > 1) t += sell(id, S.collection[id] - 1); }); return r2(t); }
     function pocketMoney() { if (S.wallet >= cheapest()) return 0; S.wallet = r2(S.wallet + D.PACK.pocketMoney); S.deposits = r2(S.deposits + D.PACK.pocketMoney); save(); return D.PACK.pocketMoney; }
-    function collectionValue(setId) { var t = 0; ids(setId).forEach(function (id) { t += D.BY_ID[id].price * S.collection[id]; }); return r2(t); }
+    function collectionValue(setId) { var t = 0; ids(setId).forEach(function (id) { t += cv(id) * S.collection[id]; }); return r2(t); }
     function uniqueCount(setId) { return ids(setId).length; }
     // kariera: przychody z pracy/nagród, wydatki poza paczkami, wymiany kart bez pieniędzy
     function deposit(v) { v = r2(v); S.wallet = r2(S.wallet + v); S.deposits = r2(S.deposits + v); save(); return v; }
@@ -96,7 +98,7 @@
     function setSound(on) { S.sound = !!on; save(); }
     return { get state() { return S; }, catalog: cat, load: load, save: save, price: price, canBuy: canBuy, cheapest: cheapest, buy: buy, grant: grant, markPulled: markPulled, revealNext: revealNext,
       finishPack: finishPack, sell: sell, sellPrice: sellPrice, sellDuplicates: sellDuplicates, duplicatesValue: duplicatesValue, duplicatesCount: duplicatesCount,
-      pocketMoney: pocketMoney, deposit: deposit, pay: pay, addCard: addCard, removeCard: removeCard, sellRate: sellRate, opts: opts, collectionValue: collectionValue, uniqueCount: uniqueCount, profit: profit, reset: reset, setSound: setSound };
+      pocketMoney: pocketMoney, deposit: deposit, pay: pay, addCard: addCard, removeCard: removeCard, sellRate: sellRate, cardValue: cv, opts: opts, collectionValue: collectionValue, uniqueCount: uniqueCount, profit: profit, reset: reset, setSound: setSound };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createEconomy: createEconomy }; else root.PZEconomy = { createEconomy: createEconomy };
 })(typeof window !== 'undefined' ? window : this);
